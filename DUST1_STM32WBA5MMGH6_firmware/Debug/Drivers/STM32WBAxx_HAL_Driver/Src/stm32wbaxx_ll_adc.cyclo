@@ -1,0 +1,16 @@
+../Drivers/STM32WBAxx_HAL_Driver/Inc/stm32wbaxx_ll_adc.h:1869:22:LL_ADC_SetCommonClock	1
+../Drivers/STM32WBAxx_HAL_Driver/Inc/stm32wbaxx_ll_adc.h:2626:26:LL_ADC_REG_GetSequencerConfigurable	1
+../Drivers/STM32WBAxx_HAL_Driver/Inc/stm32wbaxx_ll_adc.h:2690:22:LL_ADC_REG_SetSequencerLength	1
+../Drivers/STM32WBAxx_HAL_Driver/Inc/stm32wbaxx_ll_adc.h:4213:22:LL_ADC_Disable	1
+../Drivers/STM32WBAxx_HAL_Driver/Inc/stm32wbaxx_ll_adc.h:4232:26:LL_ADC_IsEnabled	2
+../Drivers/STM32WBAxx_HAL_Driver/Inc/stm32wbaxx_ll_adc.h:4243:26:LL_ADC_IsDisableOngoing	2
+../Drivers/STM32WBAxx_HAL_Driver/Inc/stm32wbaxx_ll_adc.h:4343:22:LL_ADC_REG_StopConversion	1
+../Drivers/STM32WBAxx_HAL_Driver/Inc/stm32wbaxx_ll_adc.h:4370:26:LL_ADC_REG_IsStopConversionOngoing	2
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_ll_adc.c:196:13:LL_ADC_CommonDeInit	1
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_ll_adc.c:228:13:LL_ADC_CommonInit	2
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_ll_adc.c:265:6:LL_ADC_CommonStructInit	1
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_ll_adc.c:289:13:LL_ADC_DeInit	7
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_ll_adc.c:466:13:LL_ADC_Init	2
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_ll_adc.c:508:6:LL_ADC_StructInit	1
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_ll_adc.c:557:13:LL_ADC_REG_Init	5
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_ll_adc.c:665:6:LL_ADC_REG_StructInit	1

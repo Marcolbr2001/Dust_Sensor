@@ -1,0 +1,12 @@
+../Projects/Common/WPAN/Modules/Flash/simple_nvm_arbiter.c:228:20:SNVMA_Init	72	static,ignoring_inline_asm
+../Projects/Common/WPAN/Modules/Flash/simple_nvm_arbiter.c:421:20:SNVMA_Register	56	static,ignoring_inline_asm
+../Projects/Common/WPAN/Modules/Flash/simple_nvm_arbiter.c:532:20:SNVMA_Restore	48	static,ignoring_inline_asm
+../Projects/Common/WPAN/Modules/Flash/simple_nvm_arbiter.c:654:20:SNVMA_Write	56	static,ignoring_inline_asm
+../Projects/Common/WPAN/Modules/Flash/simple_nvm_arbiter.c:767:6:SNVMA_FlashManagerCallback	368	static,ignoring_inline_asm
+../Projects/Common/WPAN/Modules/Flash/simple_nvm_arbiter.c:1471:9:IsHeaderOk	24	static
+../Projects/Common/WPAN/Modules/Flash/simple_nvm_arbiter.c:1526:9:IsCrcOk	40	static
+../Projects/Common/WPAN/Modules/Flash/simple_nvm_arbiter.c:1686:9:IsSameContent	32	static
+../Projects/Common/WPAN/Modules/Flash/simple_nvm_arbiter.c:1704:19:GetNewestBank	32	static
+../Projects/Common/WPAN/Modules/Flash/simple_nvm_arbiter.c:1726:9:EraseSector	32	static
+../Projects/Common/WPAN/Modules/Flash/simple_nvm_arbiter.c:1764:17:StartFlashWrite	48	static,ignoring_inline_asm
+../Projects/Common/WPAN/Modules/Flash/simple_nvm_arbiter.c:1868:6:InvokeBufferCallback	48	static,ignoring_inline_asm

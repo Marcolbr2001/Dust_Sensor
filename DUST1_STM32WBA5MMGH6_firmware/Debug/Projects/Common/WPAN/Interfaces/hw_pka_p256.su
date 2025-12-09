@@ -1,0 +1,6 @@
+../Projects/Common/WPAN/Interfaces/hw_pka_p256.c:111:6:HW_PKA_P256_StartRangeCheck	16	static
+../Projects/Common/WPAN/Interfaces/hw_pka_p256.c:128:10:HW_PKA_P256_IsRangeCheckOk	8	static
+../Projects/Common/WPAN/Interfaces/hw_pka_p256.c:135:6:HW_PKA_P256_StartPointCheck	16	static
+../Projects/Common/WPAN/Interfaces/hw_pka_p256.c:169:10:HW_PKA_P256_IsPointCheckOk	8	static
+../Projects/Common/WPAN/Interfaces/hw_pka_p256.c:176:6:HW_PKA_P256_StartEccScalarMul	24	static
+../Projects/Common/WPAN/Interfaces/hw_pka_p256.c:219:6:HW_PKA_P256_ReadEccScalarMul	16	static

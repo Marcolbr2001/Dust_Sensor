@@ -1,0 +1,13 @@
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_hal_rng.c:154:19:HAL_RNG_Init	24	static
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_hal_rng.c:280:19:HAL_RNG_DeInit	24	static
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_hal_rng.c:354:13:HAL_RNG_MspInit	16	static
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_hal_rng.c:369:13:HAL_RNG_MspDeInit	16	static
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_hal_rng.c:636:19:HAL_RNG_GenerateRandomNumber	24	static
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_hal_rng.c:718:19:HAL_RNG_GenerateRandomNumber_IT	24	static
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_hal_rng.c:767:6:HAL_RNG_IRQHandler	24	static
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_hal_rng.c:854:10:HAL_RNG_ReadLastRandomNumber	16	static
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_hal_rng.c:871:13:HAL_RNG_ReadyDataCallback	16	static
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_hal_rng.c:887:13:HAL_RNG_ErrorCallback	16	static
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_hal_rng.c:921:22:HAL_RNG_GetState	16	static
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_hal_rng.c:931:10:HAL_RNG_GetError	16	static
+../Drivers/STM32WBAxx_HAL_Driver/Src/stm32wbaxx_hal_rng.c:953:19:RNG_RecoverSeedError	24	static

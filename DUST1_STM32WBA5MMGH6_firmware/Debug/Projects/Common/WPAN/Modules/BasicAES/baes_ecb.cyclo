@@ -1,0 +1,2 @@
+../Projects/Common/WPAN/Modules/BasicAES/baes_ecb.c:23:6:BAES_Reset	1
+../Projects/Common/WPAN/Modules/BasicAES/baes_ecb.c:34:6:BAES_EcbCrypt	2

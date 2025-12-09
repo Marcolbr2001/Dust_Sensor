@@ -1,0 +1,2 @@
+../Projects/Common/WPAN/Modules/app_sys.c:45:6:APP_SYS_BLE_EnterDeepSleep	16	static
+../Projects/Common/WPAN/Modules/app_sys.c:110:6:APP_SYS_SetWakeupOffset	16	static

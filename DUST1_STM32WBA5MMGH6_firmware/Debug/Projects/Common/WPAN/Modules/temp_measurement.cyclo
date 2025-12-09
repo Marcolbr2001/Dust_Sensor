@@ -1,0 +1,2 @@
+../Projects/Common/WPAN/Modules/temp_measurement.c:45:23:TEMPMEAS_Init	3
+../Projects/Common/WPAN/Modules/temp_measurement.c:66:6:TEMPMEAS_RequestTemperatureMeasurement	1

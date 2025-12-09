@@ -1,0 +1,4 @@
+../STM32_WPAN/App/app_bsp.c:318:6:APP_BSP_Init	1
+../STM32_WPAN/App/app_bsp.c:342:6:APP_BSP_PostIdle	1
+../STM32_WPAN/App/app_bsp.c:375:6:APP_BSP_StandbyExit	1
+../STM32_WPAN/App/app_bsp.c:1673:9:APP_BSP_SerialCmdExecute	2

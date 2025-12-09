@@ -1,0 +1,8 @@
+../Projects/Common/WPAN/Modules/MemoryManager/advanced_memory_manager.c:177:22:AMM_Init	32	static
+../Projects/Common/WPAN/Modules/MemoryManager/advanced_memory_manager.c:347:22:AMM_DeInit	16	static
+../Projects/Common/WPAN/Modules/MemoryManager/advanced_memory_manager.c:381:22:AMM_Alloc	64	static,ignoring_inline_asm
+../Projects/Common/WPAN/Modules/MemoryManager/advanced_memory_manager.c:558:22:AMM_Free	56	static,ignoring_inline_asm
+../Projects/Common/WPAN/Modules/MemoryManager/advanced_memory_manager.c:664:6:AMM_BackgroundProcess	16	static
+../Projects/Common/WPAN/Modules/MemoryManager/advanced_memory_manager.c:683:6:pushPending	16	static
+../Projects/Common/WPAN/Modules/MemoryManager/advanced_memory_manager.c:692:6:passPendingToActive	16	static
+../Projects/Common/WPAN/Modules/MemoryManager/advanced_memory_manager.c:705:39:popActive	16	static

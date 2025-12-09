@@ -1,0 +1,11 @@
+../Drivers/STM32WBAxx_HAL_Driver/Inc/stm32wbaxx_ll_bus.h:604:22:LL_AHB2_GRP1_EnableClock	1
+../Drivers/STM32WBAxx_HAL_Driver/Inc/stm32wbaxx_ll_bus.h:669:26:LL_AHB2_GRP1_IsEnabledClock	2
+../Drivers/STM32WBAxx_HAL_Driver/Inc/stm32wbaxx_ll_bus.h:730:22:LL_AHB2_GRP1_DisableClock	1
+../Projects/Common/WPAN/Interfaces/hw_aes.c:47:5:HW_AES_Enable	2
+../Projects/Common/WPAN/Interfaces/hw_aes.c:71:6:HW_AES_SetKey	6
+../Projects/Common/WPAN/Interfaces/hw_aes.c:136:6:HW_AES_Crypt	2
+../Projects/Common/WPAN/Interfaces/hw_aes.c:160:6:HW_AES_Disable	2
+../Projects/Common/WPAN/Interfaces/hw_aes.c:182:6:HW_AES_Crypt8	2
+../Projects/Common/WPAN/Interfaces/hw_aes.c:214:6:HW_AES_InitCcm	4
+../Projects/Common/WPAN/Interfaces/hw_aes.c:271:6:HW_AES_EndCcm	2
+../Projects/Common/WPAN/Interfaces/hw_aes.c:296:6:HW_AES_SetLast	1

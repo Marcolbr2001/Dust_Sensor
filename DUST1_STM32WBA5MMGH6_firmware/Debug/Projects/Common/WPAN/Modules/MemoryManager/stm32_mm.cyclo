@@ -1,0 +1,4 @@
+../Projects/Common/WPAN/Modules/MemoryManager/stm32_mm.c:181:8:UTIL_MM_GetBuffer	11
+../Projects/Common/WPAN/Modules/MemoryManager/stm32_mm.c:338:6:UTIL_MM_ReleaseBuffer	4
+../Projects/Common/WPAN/Modules/MemoryManager/stm32_mm.c:409:6:UTIL_MM_Init	2
+../Projects/Common/WPAN/Modules/MemoryManager/stm32_mm.c:463:13:prvInsertBlockIntoFreeList	6
