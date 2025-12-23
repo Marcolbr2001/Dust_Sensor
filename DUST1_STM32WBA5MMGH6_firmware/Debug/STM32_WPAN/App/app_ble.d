@@ -116,7 +116,11 @@ STM32_WPAN/App/app_ble.o: ../STM32_WPAN/App/app_ble.c ../Core/Inc/main.h \
  ../System/Config/Flash/simple_nvm_arbiter_conf.h \
  ../Projects/Common/WPAN/Modules/Flash/simple_nvm_arbiter_common.h \
  ../STM32_WPAN/App/ble_sensor.h ../STM32_WPAN/App/ble_sensor_app.h \
- ../STM32_WPAN/App/app_bsp.h
+ ../STM32_WPAN/App/app_bsp.h ../Core/Inc/DUST_functions.h \
+ ../Core/Inc/main.h ../STM32_WPAN/App/app_ble.h \
+ ../Projects/Common/WPAN/Modules/dbg_trace.h \
+ ../STM32_WPAN/App/ble_sensor_app.h ../STM32_WPAN/App/ble_sensor.h \
+ ../Core/Inc/stm32_rtos.h
 ../Core/Inc/main.h:
 ../Drivers/STM32WBAxx_HAL_Driver/Inc/stm32wbaxx_hal.h:
 ../Core/Inc/stm32wbaxx_hal_conf.h:
@@ -244,3 +248,10 @@ STM32_WPAN/App/app_ble.o: ../STM32_WPAN/App/app_ble.c ../Core/Inc/main.h \
 ../STM32_WPAN/App/ble_sensor.h:
 ../STM32_WPAN/App/ble_sensor_app.h:
 ../STM32_WPAN/App/app_bsp.h:
+../Core/Inc/DUST_functions.h:
+../Core/Inc/main.h:
+../STM32_WPAN/App/app_ble.h:
+../Projects/Common/WPAN/Modules/dbg_trace.h:
+../STM32_WPAN/App/ble_sensor_app.h:
+../STM32_WPAN/App/ble_sensor.h:
+../Core/Inc/stm32_rtos.h:

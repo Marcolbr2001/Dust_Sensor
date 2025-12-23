@@ -153,10 +153,10 @@ void DATA_RECEIVED(const uint8_t *data_received, uint16_t len)
 
 		case 'k':
 
-			if (data_received[1] == 'r')
-			  LED_BLINKING(TIM_CHANNEL_1, pwm_buf); //red
 			if (data_received[1] == 'g')
-			  LED_BLINKING(TIM_CHANNEL_2, pwm_buf); //green --> questo è collegato al led della EBoard
+			  LED_BLINKING(TIM_CHANNEL_1, pwm_buf); //green
+			if (data_received[1] == 'r')
+			  LED_BLINKING(TIM_CHANNEL_2, pwm_buf); //red --> questo è collegato al led della EBoard
 			if (data_received[1] == 'b')
 			  LED_BLINKING(TIM_CHANNEL_3, pwm_buf); //blue
 
@@ -235,7 +235,7 @@ void DATA_RECEIVED(const uint8_t *data_received, uint16_t len)
 			g_ble_dust_stream_enabled = 0;
 			g_usb_dust_stream_enabled = 0;
 
-			CHANNEL_SET(1); //Led off
+			//CHANNEL_SET(1); //Led off
 
 			HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
 			HAL_TIM_PWM_Stop_DMA(&htim3, TIM_CHANNEL_1);
@@ -277,6 +277,10 @@ void LED_BLINKING(const uint32_t LED_COLOR, uint16_t *pwm_buffer)
 	//HAL_TIM_PWM_Stop_DMA(&htim3, LED_COLOR);
 	//__HAL_TIM_SET_AUTORELOAD(&htim3, 65535);
 	//__HAL_TIM_SET_COMPARE(&htim3, LED_COLOR, 65535);
+	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
+	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_2);
+	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);
+
 	HAL_TIM_PWM_Start(&htim3, LED_COLOR);
 }
 
@@ -302,24 +306,54 @@ void GET_ADC_VALUES()
 void GET_ADC_VALUES_continous()
 {
 
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_SET); //Read dust chip values
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_RESET); //Read dust chip values
-	//HAL_GPIO_WritePin(GPIOB, GPIO_PIN_11, GPIO_PIN_RESET); //Do not read SD
-	HAL_StatusTypeDef status;
+	if (hspi3.State != HAL_SPI_STATE_READY) return;
 
-	status = HAL_SPI_TransmitReceive_DMA(&hspi3, (uint8_t*)Tx_Command_Buffer, (uint8_t*)Rx_Data_Buffer, transfer_length);
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_SET); //Read dust chip values
+
+	// Il timer è configurato in One-Pulse Mode, quindi si fermerà da solo.
+	__HAL_TIM_SET_COUNTER(&htim1, 0); // Resetta il contatore
+	HAL_TIM_Base_Start_IT(&htim1);    // Avvia il timer con interrupt
+
+
+	//HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_RESET); //Read dust chip values
+	//HAL_GPIO_WritePin(GPIOB, GPIO_PIN_11, GPIO_PIN_RESET); //Do not read SD
+	//HAL_StatusTypeDef status;
+
+	//status = HAL_SPI_TransmitReceive_DMA(&hspi3, (uint8_t*)Tx_Command_Buffer, (uint8_t*)Rx_Data_Buffer, transfer_length);
 
 	//status = HAL_SPI_Receive_DMA(&hspi3, spi_data, size);
 }
 
 
+// Puoi mettere questa funzione in main.c o DUST_functions.c
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    // Controlla che sia TIM1 a chiamare
+    if (htim->Instance == TIM1)
+    {
+        // 1. Ferma il timer (sicurezza, anche se in OnePulse dovrebbe fermarsi)
+        HAL_TIM_Base_Stop_IT(&htim1);
+
+        // 2. Fine Conversione: CONVST BASSO
+        // Ora i dati sono pronti nel registro dell'ADC
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_RESET);
+
+        // 3. Avvia la lettura DMA
+        // Se fallisce (es. SPI occupata), riporta CS alto per reset
+        if (HAL_SPI_TransmitReceive_DMA(&hspi3, (uint8_t*)Tx_Command_Buffer, (uint8_t*)Rx_Data_Buffer, transfer_length) != HAL_OK)
+        {
+            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_SET);
+        }
+    }
+}
+
 void HAL_LPTIM_AutoReloadMatchCallback(LPTIM_HandleTypeDef *hlptim)
 {
-	HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_1);
+	//HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_1); DEBUG
 
     // Selecting prossimo canale SW e HW --> POI LI METTO INSIEME
 	DUST_SetCurrentChannel(next_ch);
-    CHANNEL_SET(9);
+    CHANNEL_SET(next_ch);
 
 	GET_ADC_VALUES_continous();
 
@@ -359,10 +393,10 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
         // Questo fa tornare DOUT in 3-state e l'ADC in fase di Acquisizione.
         //HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_SET);
 
-        //uint16_t adc_val = Rx_Data_Buffer[0];
+        uint16_t adc_val = Rx_Data_Buffer[0];
         uint32_t now_ms  = HAL_GetTick();
 
-        adc_val = adc_val + 1;
+        //adc_val = adc_val + 1; DEBUG
         // Passo il sample al modulo dust (usa g_current_channel interno)
         DUST_Process(g_current_channel, adc_val, now_ms);
 
@@ -388,7 +422,7 @@ static void DUST_Internal_ResetChannel(DustChannelState_t *s)
     s->last_raw        = 0u;
     s->event_len       = 0u;
     s->event_timestamp_ms = 0u;
-    s->particle_count  = 1u;
+    s->particle_count  = 0u;
 }
 
 // Moving average su una finestra di DUST_MAVG_WINDOW campioni

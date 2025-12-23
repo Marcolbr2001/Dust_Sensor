@@ -32,6 +32,8 @@
 extern TIM_HandleTypeDef htim3;
 extern LPTIM_HandleTypeDef hlptim1;
 extern SPI_HandleTypeDef hspi3;
+extern TIM_HandleTypeDef htim1;
+
 
 extern volatile uint8_t g_ble_dust_stream_enabled;
 extern volatile uint8_t g_usb_dust_stream_enabled;

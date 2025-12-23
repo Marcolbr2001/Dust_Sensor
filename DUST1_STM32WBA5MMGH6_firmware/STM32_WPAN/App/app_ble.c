@@ -40,6 +40,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "app_bsp.h"
+#include "DUST_functions.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -192,6 +193,7 @@ static uint64_t host_nvm_buffer[CFG_BLE_NVM_SIZE_MAX];
 
 /* USER CODE BEGIN PV */
 uint8_t a_GATT_DevInfoData[22];
+uint16_t pwm_buf_ble[] = {13000, 13000, 0, 0, 0, 0, 0, 0, 0, 0}; //to use in case of PWM DMA
 /* USER CODE END PV */
 
 /* Global variables ----------------------------------------------------------*/
@@ -341,7 +343,9 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *p_Pckt)
       BLE_SENSOR_APP_EvtRx(&BLE_SENSORHandleNotification);
       /* USER CODE BEGIN EVT_DISCONN_COMPLETE */
       APP_BLE_Procedure_Gap_Peripheral(PROC_GAP_PERIPH_ADVERTISE_START_FAST);
-      HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);
+      //HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);
+	  HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);	// --> Bluetooth disconnected
+	  HAL_TIM_PWM_Stop_DMA(&htim3, TIM_CHANNEL_3);
       /* USER CODE END EVT_DISCONN_COMPLETE */
       break; /* HCI_DISCONNECTION_COMPLETE_EVT_CODE */
     }
@@ -482,7 +486,10 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *p_Pckt)
           BLE_SENSORHandleNotification.ConnectionHandle = p_conn_complete->Connection_Handle;
           BLE_SENSOR_APP_EvtRx(&BLE_SENSORHandleNotification);
           /* USER CODE BEGIN HCI_EVT_LE_CONN_COMPLETE */
-          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET);
+          //HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET);
+		  //HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_2); //Turn OFF green led
+		  //HAL_TIM_PWM_Stop_DMA(&htim3, TIM_CHANNEL_2);
+		  LED_BLINKING(TIM_CHANNEL_3, pwm_buf_ble); //blue --> connection to bluetoth succesfull
           /* USER CODE END HCI_EVT_LE_CONN_COMPLETE */
           break; /* HCI_LE_CONNECTION_COMPLETE_SUBEVT_CODE */
         }

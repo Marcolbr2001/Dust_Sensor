@@ -77,6 +77,12 @@ default.size.stdout \
 OBJDUMP_LIST += \
 DUST1_STM32WBA5MMGH6_firmware.list \
 
+OBJCOPY_HEX += \
+DUST1_STM32WBA5MMGH6_firmware.hex \
+
+OBJCOPY_BIN += \
+DUST1_STM32WBA5MMGH6_firmware.bin \
+
 
 # All Target
 all: main-build
@@ -100,12 +106,22 @@ DUST1_STM32WBA5MMGH6_firmware.list: $(EXECUTABLES) makefile objects.list $(OPTIO
 	@echo 'Finished building: $@'
 	@echo ' '
 
+DUST1_STM32WBA5MMGH6_firmware.hex: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objcopy  -O ihex $(EXECUTABLES) "DUST1_STM32WBA5MMGH6_firmware.hex"
+	@echo 'Finished building: $@'
+	@echo ' '
+
+DUST1_STM32WBA5MMGH6_firmware.bin: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objcopy  -O binary $(EXECUTABLES) "DUST1_STM32WBA5MMGH6_firmware.bin"
+	@echo 'Finished building: $@'
+	@echo ' '
+
 # Other Targets
 clean:
-	-$(RM) DUST1_STM32WBA5MMGH6_firmware.elf DUST1_STM32WBA5MMGH6_firmware.list DUST1_STM32WBA5MMGH6_firmware.map default.size.stdout
+	-$(RM) DUST1_STM32WBA5MMGH6_firmware.bin DUST1_STM32WBA5MMGH6_firmware.elf DUST1_STM32WBA5MMGH6_firmware.hex DUST1_STM32WBA5MMGH6_firmware.list DUST1_STM32WBA5MMGH6_firmware.map default.size.stdout
 	-@echo ' '
 
-secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST)
+secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST) $(OBJCOPY_HEX) $(OBJCOPY_BIN)
 
 fail-specified-linker-script-missing:
 	@echo 'Error: Cannot find the specified linker script. Check the linker settings in the build configuration.'
