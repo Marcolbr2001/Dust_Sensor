@@ -1,0 +1,13 @@
+../Core/Inc/source/diskio.c:40:13:CS_HIGH	1
+../Core/Inc/source/diskio.c:44:13:CS_LOW	1
+../Core/Inc/source/diskio.c:48:16:SPI_TxRx	1
+../Core/Inc/source/diskio.c:55:13:SPI_Tx	1
+../Core/Inc/source/diskio.c:59:16:SPI_Rx	1
+../Core/Inc/source/diskio.c:64:12:wait_ready	3
+../Core/Inc/source/diskio.c:78:16:send_cmd	8
+../Core/Inc/source/diskio.c:117:9:disk_initialize	20
+../Core/Inc/source/diskio.c:155:9:disk_read	8
+../Core/Inc/source/diskio.c:182:9:disk_write	6
+../Core/Inc/source/diskio.c:210:9:disk_status	1
+../Core/Inc/source/diskio.c:217:9:disk_ioctl	4
+../Core/Inc/source/diskio.c:236:7:get_fattime	1

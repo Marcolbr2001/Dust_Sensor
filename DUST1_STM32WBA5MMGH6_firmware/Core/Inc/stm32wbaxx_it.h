@@ -66,6 +66,7 @@ void TIM1_UP_IRQHandler(void);
 void USART1_IRQHandler(void);
 void LPTIM1_IRQHandler(void);
 void TIM16_IRQHandler(void);
+void COMP_IRQHandler(void);
 void SPI3_IRQHandler(void);
 void RADIO_IRQHandler(void);
 void HASH_IRQHandler(void);

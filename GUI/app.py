@@ -1,3 +1,4 @@
+# app.py
 import os
 from PIL import Image
 import customtkinter as ctk
@@ -12,12 +13,12 @@ from visual_tab import VisualTab
 from advanced_tab import AdvancedTab
 from settings_tab import SettingsTab
 from collections import deque
-
+import datetime  # <--- AGGIUNTO per timestamp file
 
 # --------- UUID BLE ---------
 BT_SERVICE_UUID       = "00000000-0001-11e1-9ab4-0002a5d5c51b"
 BT_CHAR_MYDATA_UUID   = "00c00000-0001-11e1-ac36-0002a5d5c51b"  # notify
-BT_CHAR_RECVDATA_UUID = "000c0000-0001-11e1-ac36-0002a5d5c51b"  # write
+BT_CHAR_RECVDATA_UUID = "00c10000-0001-11e1-ac36-0002a5d5c51b"  # write
 
 # --------- Costanti protocollo DUST ---------
 DUST_CHANNELS = 32
@@ -40,6 +41,10 @@ class App(ctk.CTk):
         # Throttling del disegno grafici
         self._last_draw_time = 0.0
         self._min_draw_interval = 0.1  # 40 ms ≈ 25 Hz di refresh grafico
+        
+        # --- GESTIONE LOG SU FILE (NUOVO) ---
+        self.is_logging = False
+        self.log_file = None
         # ------------------------------------ #
 
         self.title("DUST Monitor")
@@ -59,6 +64,16 @@ class App(ctk.CTk):
                 light_image=left_light,
                 dark_image=left_dark,
                 size=(190, 60),
+            )
+
+
+            # CENTER logo: light + dark
+            center_light = Image.open(os.path.join(base_dir, "img/ESA_White.png"))
+            center_dark = Image.open(os.path.join(base_dir, "img/ESA_White.png"))
+            self.logo_c = ctk.CTkImage(
+                light_image=center_light,
+                dark_image=center_dark,
+                size=(60, 60),
             )
 
             # RIGHT logo: light + dark
@@ -85,16 +100,28 @@ class App(ctk.CTk):
             left_logo_label = ctk.CTkLabel(header, text="", image=self.logo_l)
             left_logo_label.grid(row=0, column=0, sticky="w")
 
+        # TITOLO al centro della colonna 1 (niente sticky → centrato)
         title_label = ctk.CTkLabel(
             header,
             text="DUST Tracker Monitor",
             font=ctk.CTkFont(family="Segoe UI", size=32, weight="bold"),
+            anchor="center",
         )
-        title_label.grid(row=0, column=1, sticky="nsew", pady=(10, 10))
+        title_label.grid(row=0, column=1, pady=(10, 10), padx=(120, 0))
 
-        if self.logo_r is not None:
-            right_logo_label = ctk.CTkLabel(header, text="", image=self.logo_r)
-            right_logo_label.grid(row=0, column=2, sticky="e")
+        # Frame a destra che contiene i due loghi (ESA + i3n)
+        if self.logo_c is not None or self.logo_r is not None:
+            right_frame = ctk.CTkFrame(header, fg_color="transparent")
+            right_frame.grid(row=0, column=2, sticky="e", padx=(0, 10))
+
+            if self.logo_c is not None:
+                center_logo_label = ctk.CTkLabel(right_frame, text="", image=self.logo_c)
+                center_logo_label.pack(side="left", padx=(0, 30))
+
+            if self.logo_r is not None:
+                right_logo_label = ctk.CTkLabel(right_frame, text="", image=self.logo_r)
+                right_logo_label.pack(side="left")
+
 
         # --- Serial e BLE ---
         self.serial = None
@@ -122,7 +149,7 @@ class App(ctk.CTk):
         self.tab_connection_page = self.tabview.add("Connection")
         self.tab_visual_page = self.tabview.add("Global")
         self.tab_advanced_page = self.tabview.add("Channels")
-        self.tab_settings_page = self.tabview.add("Settings")
+        self.tab_settings_page = self.tabview.add("Dashboard")
 
         self.connection_tab = ConnectionTab(self.tab_connection_page, controller=self)
         self.connection_tab.pack(fill="both", expand=True)
@@ -136,6 +163,37 @@ class App(ctk.CTk):
         self.settings_tab.pack(fill="both", expand=True)
 
         self._refresh_serial_ports()
+
+    # ---------- GESTIONE FILE LOG ----------
+    def set_logging_state(self, active: bool):
+        """
+        Attiva o disattiva il salvataggio su file.
+        Chiamato dallo switch nella tab Channels.
+        """
+        if active:
+            if not self.is_logging:
+                try:
+                    # Crea nome file con timestamp
+                    now = datetime.datetime.now()
+                    timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
+                    filename = f"dust_log_{timestamp}.txt"
+                    
+                    self.log_file = open(filename, "w")
+                    self.is_logging = True
+                    self._log(f"[LOG] File logging started: {filename}")
+                except Exception as e:
+                    self._log(f"[LOG] Error creating file: {e}")
+                    self.is_logging = False
+        else:
+            if self.is_logging and self.log_file:
+                try:
+                    self.log_file.close()
+                    self._log("[LOG] File logging stopped and saved.")
+                except Exception as e:
+                    self._log(f"[LOG] Error closing file: {e}")
+                finally:
+                    self.log_file = None
+                    self.is_logging = False
 
     # ---------- BLE loop ----------
     def _ble_loop_runner(self):
@@ -173,7 +231,7 @@ class App(ctk.CTk):
             try:
                 names, addr_map = fut.result()
             except Exception as err:
-                self.after(0, lambda: self._log(f"[BT] Scan error: {err}"))
+                self.after(0, lambda e: self._log(f"[BT] Scan error: {err}"))
                 return
 
             def update_ui():
@@ -317,7 +375,19 @@ class App(ctk.CTk):
         self.after(0, lambda: self._handle_bt_message(hex_str, data_copy))
 
     def _handle_bt_message(self, hex_text: str, raw: bytes):
+        # 1. Log a video
         self._log(f"[BT RX] {hex_text}")
+
+        # 2. Salvataggio su file (NUOVO)
+        if self.is_logging and self.log_file:
+            try:
+                # Scriviamo la stringa hex esattamente come appare nel log
+                self.log_file.write(hex_text + "\n")
+                self.log_file.flush()
+            except Exception:
+                pass
+        
+        # 3. Parsing
         self._append_dust_bytes(raw)
 
     # ---------- PARSING FRAME DUST ----------
@@ -484,6 +554,9 @@ class App(ctk.CTk):
 
     # ---------- CHIUSURA ----------
     def on_close(self):
+        if self.is_logging and self.log_file:
+            self.log_file.close()
+
         if self.serial and self.serial.is_open:
             try:
                 self.serial.close()

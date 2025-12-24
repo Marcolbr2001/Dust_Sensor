@@ -46,6 +46,7 @@ static inline void CHANNEL_SET_Init(void);
 void LED_BLINKING(const uint32_t LED_COLOR, uint16_t *pwm_buf);
 void GET_ADC_VALUES();
 void GET_ADC_VALUES_continous();
+extern void SD_Write_Test_File(void);
 
 typedef struct
 {

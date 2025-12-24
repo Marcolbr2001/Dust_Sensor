@@ -346,6 +346,8 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *p_Pckt)
       //HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);
 	  HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);	// --> Bluetooth disconnected
 	  HAL_TIM_PWM_Stop_DMA(&htim3, TIM_CHANNEL_3);
+
+	  LED_BLINKING(TIM_CHANNEL_1, pwm_buf_ble);
       /* USER CODE END EVT_DISCONN_COMPLETE */
       break; /* HCI_DISCONNECTION_COMPLETE_EVT_CODE */
     }

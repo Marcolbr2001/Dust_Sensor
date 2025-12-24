@@ -88,7 +88,7 @@ class SettingsTab(ctk.CTkFrame):
         # descrizione in corsivo sotto i radio button
         lbl_clock_desc = ctk.CTkLabel(
             clock_card,
-            text="Select the SPI clock used to read data from the DUST sensor.",
+            text="Select the clock used by DUST sensor.",
             font=self._desc_font,
         )
         lbl_clock_desc.grid(row=4, column=0, sticky="w", padx=15, pady=(0, 10))

@@ -1,12 +1,12 @@
+# widgets.py
 import tkinter as tk
 import customtkinter as ctk
 from collections import deque
 import math
 import time
 
-
 # -------------------------------------------------------------------------
-#                      PALETTE COLORI PER I GRAFICI
+#                      PALETTE COLORI
 # -------------------------------------------------------------------------
 
 def _get_graph_colors():
@@ -42,24 +42,36 @@ def _get_graph_colors():
 # -------------------------------------------------------------------------
 
 class TimeSeriesGraph(tk.Canvas):
-    """Canvas per grafico ADC nel tempo (usato nei canali)."""
+    """
+    Canvas nativo per grafico ADC.
+    Versione ottimizzata con autoscale + 1LSB padding + Parity Check.
+    """
 
-    MAX_ADC = 32768       # range teorico ADC (0 .. 32768)
-    HALF_RANGE = 2000     # finestra visibile: centro ± 2000 (in bit)
+    MAX_ADC = 32768
 
     def __init__(self, master, max_points=100, **kwargs):
+        # Default: sfondo scuro se non specificato
+        if "bg" not in kwargs:
+            kwargs["bg"] = "#1c1c1c"
+
         kwargs.setdefault("width", 100)
         kwargs.setdefault("height", 60)
+        kwargs.setdefault("highlightthickness", 0)
+
         super().__init__(master, **kwargs)
+
         self.max_points = max_points
         self.values = deque(maxlen=max_points)
 
         # modalità di visualizzazione: "bit" oppure "voltage"
         self.display_mode = "bit"
 
-        # Profiling locale del grafico
-        self._last_redraw_ms = 0.0
-        self._max_redraw_ms = 0.0
+        # Limiter FPS (max 60 FPS)
+        self._min_draw_interval = 1.0 / 60.0
+        self._last_draw_time = 0.0
+        
+        # Id per gestire il resize debounce
+        self._resize_job = None
 
         self.bind("<Configure>", self._on_resize)
 
@@ -68,10 +80,11 @@ class TimeSeriesGraph(tk.Canvas):
         if mode not in ("bit", "voltage"):
             return
         self.display_mode = mode
-        self.redraw()
+        self.redraw(force=True)
 
     def _on_resize(self, event):
-        self.redraw()
+        # FIX: Non forzare il redraw immediato su resize per evitare lag
+        self.redraw(force=False)
 
     def add_value(self, value: float):
         """Aggiunge un nuovo valore ADC (in bit)."""
@@ -80,117 +93,130 @@ class TimeSeriesGraph(tk.Canvas):
 
     # ------------------------------------------------------------------ utils
 
-    def _map_y(self, v, vmin, vmax, top, plot_h):
+    def _y_to_px(self, v, vmin, vmax, top, plot_h):
         """Converte un valore in coordinata y canvas."""
         if vmax <= vmin:
-            return top + plot_h / 2
+            return top + plot_h / 2.0
+
+        # Clamp
+        if v < vmin: v = vmin
+        if v > vmax: v = vmax
 
         frac = (v - vmin) / (vmax - vmin)
-        if frac < 0.0:
-            frac = 0.0
-        elif frac > 1.0:
-            frac = 1.0
-
         return top + plot_h * (1.0 - frac)
+
+    @staticmethod
+    def _snap_line_y(y, width=1):
+        """
+        Snap per linee.
+        Se width=1 (dispari) -> .5 per nitidezza.
+        Se width=2 (pari) -> .0 intero.
+        """
+        if width % 2 != 0:
+            return int(round(y)) + 0.5
+        else:
+            return int(round(y))
+
+    @staticmethod
+    def _snap_text_y(y):
+        """Snap per testo (stabilità visiva)."""
+        return int(round(y))
 
     # ------------------------------------------------------------------ draw
 
-    def redraw(self):
-        t0 = time.perf_counter()
+    def redraw(self, force=False):
+        # Throttle (evita carico eccessivo)
+        now = time.perf_counter()
+        if (not force) and (now - self._last_draw_time) < self._min_draw_interval:
+            return
+        self._last_draw_time = now
+
+        # FIX: Controlla se il widget esiste ancora
+        try:
+            w = self.winfo_width()
+            h = self.winfo_height()
+        except tk.TclError:
+            return
+
+        if w < 2 or h < 2:
+            return
+            
+        # FIX CRITICO: Snapshot dei dati.
+        data_snapshot = list(self.values)
+
         self.delete("all")
 
-        w = max(1, self.winfo_width())
-        h = max(1, self.winfo_height())
+        # Margini
+        left, right, top, bottom = 35, 5, 5, 5
+        plot_w = w - left - right
+        plot_h = h - top - bottom
 
-        # margine sinistro più largo per le label numeriche
-        left, right, top, bottom = 32, 6, 6, 6
-        plot_w = max(1, w - left - right)
-        plot_h = max(1, h - top - bottom)
-
-        # ⇩⇩⇩  colori in base al tema  ⇩⇩⇩
         colors = _get_graph_colors()
         bg_color = colors["bg"]
         grid_color = colors["grid"]
         text_color = colors["text"]
         line_color = colors["line"]
 
-        # imposta anche il background del canvas
         self.configure(bg=bg_color)
 
-        # sfondo
-        self.create_rectangle(0, 0, w, h, fill=bg_color, outline="")
+        # -----------------------------
+        # CALCOLO LIMITI (AUTOSCALE)
+        # -----------------------------
+        if not data_snapshot:
+            curr_min = 0
+            curr_max = 100
+        else:
+            raw_min = min(data_snapshot)
+            raw_max = max(data_snapshot)
 
-        # nessun dato → solo griglia vuota
-        if not self.values:
-            for i in range(1, 5):
-                x = left + plot_w * i / 5
-                y = top + plot_h * i / 5
-                self.create_line(x, top, x, top + plot_h, fill=grid_color)
-                self.create_line(left, y, left + plot_w, y, fill=grid_color)
+            # Pad di 1 LSB sopra e sotto
+            curr_min = raw_min - 1
+            curr_max = raw_max + 1
 
-            t1 = time.perf_counter()
-            dt_ms = (t1 - t0) * 1000.0
-            self._last_redraw_ms = dt_ms
-            self._max_redraw_ms = max(self._max_redraw_ms, dt_ms)
-            return
+        # --- FIX PROPORZIONI ---
+        # Assicura che lo span (max - min) sia sempre PARI.
+        # Questo garantisce che la linea centrale (Grid Mid) sia un numero INTERO.
+        # Evita che il valore 90 appaia sotto la riga del 90 (che in realtà era 90.5).
+        if (curr_max - curr_min) % 2 != 0:
+            curr_max += 1
+
+        # Clamp ai limiti fisici
+        if curr_min < 0: curr_min = 0
+        if curr_max > self.MAX_ADC: curr_max = self.MAX_ADC
+        
+        # Se dopo il clamp lo span è tornato dispari o nullo, pazienza, ma proviamo a tenerlo safe
+        if curr_max <= curr_min:
+            curr_max = curr_min + 2
 
         # -----------------------------
-        # 1) Valori "validi" (escludo 0 e 32768)
-        #     → SEMPRE in bit
+        # Disegno Griglia
         # -----------------------------
-        valid_vals = [
-            abs(int(v))
-            for v in self.values
-            if 0 < abs(int(v)) < self.MAX_ADC
-        ]
-
-        # se TUTTI sono 0 o MAX_ADC, uso comunque qualcosa per non esplodere
-        if not valid_vals:
-            valid_vals = [abs(int(v)) for v in self.values]
-
-        center = valid_vals[-1]  # centro (in bit) = ultimo valore valido
-
-        # -----------------------------
-        # 2) Finestra centrata su center ± HALF_RANGE (in bit)
-        # -----------------------------
-        vmin = center - self.HALF_RANGE
-        vmax = center + self.HALF_RANGE
-
-        if vmin < 0:
-            vmin = 0
-            vmax = min(self.MAX_ADC, vmin + 2 * self.HALF_RANGE)
-        if vmax > self.MAX_ADC:
-            vmax = self.MAX_ADC
-            vmin = max(0, vmax - 2 * self.HALF_RANGE)
-
-        if vmax <= vmin:
-            vmax = vmin + 1.0
-
-        # -----------------------------
-        # 3) Griglia verticale
-        # -----------------------------
+        # Verticale
         for i in range(1, 5):
             x = left + plot_w * i / 5
-            self.create_line(x, top, x, top + plot_h, fill=grid_color)
+            x_line = self._snap_line_y(x, width=1)
+            self.create_line(x_line, top, x_line, top + plot_h, fill=grid_color)
 
-        # -----------------------------
-        # 4) Tre linee orizzontali (vmax, center, vmin) con label
-        # -----------------------------
-        tick_values = [vmax, center, vmin]
-        for val in tick_values:
-            y = self._map_y(val, vmin, vmax, top, plot_h)
-            self.create_line(left, y, left + plot_w, y, fill=grid_color)
+        # Orizzontale (valori): Max, Mid, Min
+        ticks = [curr_max, (curr_max + curr_min) / 2.0, curr_min]
 
-            # testo in bit o in volt (1 mV di risoluzione)
+        for val in ticks:
+            y_raw = self._y_to_px(val, curr_min, curr_max, top, plot_h)
+            y_line = self._snap_line_y(y_raw, width=1)
+            y_text = self._snap_text_y(y_raw)
+
+            self.create_line(left, y_line, left + plot_w, y_line, fill=grid_color)
+
+            # Label testo
             if self.display_mode == "voltage":
                 volts = val * 3.3 / self.MAX_ADC
-                label_text = f"{volts:.3f}"  # 3 decimali → 1 mV
+                label_text = f"{volts:.2f}V"
             else:
-                label_text = str(int(round(val)))
+                label_text = f"{int(round(val))}"
 
             self.create_text(
                 left - 4,
-                y,
+                y_text,
                 text=label_text,
                 anchor="e",
                 fill=text_color,
@@ -198,46 +224,24 @@ class TimeSeriesGraph(tk.Canvas):
             )
 
         # -----------------------------
-        # 5) Linea dei dati (sempre in bit)
-        #    (saltando esplicitamente 0 e MAX_ADC)
+        # Disegno Linea Dati
         # -----------------------------
-        segment = []  # segmento corrente di punti continui
+        if len(data_snapshot) > 1:
+            points = []
+            n_vals = len(data_snapshot)
+            denom = max(1, n_vals - 1)
 
-        n = max(1, len(self.values) - 1)
-        for i, raw in enumerate(self.values):
-            v_raw = abs(int(raw))
+            for i, v in enumerate(data_snapshot):
+                x = left + plot_w * (i / denom)
+                x_line = self._snap_line_y(x, width=1) 
 
-            # SCARTO i valori saturi 0 e MAX_ADC → niente linee orizzontali spurie
-            if v_raw <= 0 or v_raw >= self.MAX_ADC:
-                # se c'è un segmento attivo, lo disegno e lo resetto
-                if len(segment) > 1:
-                    flat = [coord for xy in segment for coord in xy]
-                    self.create_line(*flat, fill=line_color, width=1.8, smooth=True)
-                segment = []
-                continue
+                y_raw = self._y_to_px(v, curr_min, curr_max, top, plot_h)
+                y_line = self._snap_line_y(y_raw, width=1)
 
-            v = v_raw  # ancora in bit
-            x = left + plot_w * (i / n)
-            y = self._map_y(v, vmin, vmax, top, plot_h)
-            segment.append((x, y))
-
-        # ultimo segmento (se c'è)
-        if len(segment) > 1:
-            flat = [coord for xy in segment for coord in xy]
-            self.create_line(*flat, fill=line_color, width=1.8, smooth=True)
-
-        # fine profiling
-        t1 = time.perf_counter()
-        dt_ms = (t1 - t0) * 1000.0
-        self._last_redraw_ms = dt_ms
-        self._max_redraw_ms = max(self._max_redraw_ms, dt_ms)
-
-        if dt_ms > 10.0:
-            print(
-                "[PROFILE] TimeSeriesGraph.redraw: "
-                f"{dt_ms:.2f} ms (max {self._max_redraw_ms:.2f} ms)"
-            )
-
+                points.append(x_line)
+                points.append(y_line)
+            
+            self.create_line(points, fill=line_color, width=1.5)
 
 
 # -------------------------------------------------------------------------
@@ -246,112 +250,111 @@ class TimeSeriesGraph(tk.Canvas):
 
 class GlobalGraph(TimeSeriesGraph):
     """
-    Grafico della tab Global con:
-    - asse Y dinamico a tick interi
-    - griglia (orizzontale+verticale) sempre visibile
-    - stessa scala usata per linea, griglia e label
+    Grafico della tab Global.
+    Qui l'autoscale parte preferibilmente da 0.
     """
 
-    def redraw(self):
-        self.delete("all")
+    def redraw(self, force=False):
+        now = time.perf_counter()
+        if (not force) and (now - self._last_draw_time) < self._min_draw_interval:
+            return
+        self._last_draw_time = now
 
-        w = max(1, self.winfo_width())
-        h = max(1, self.winfo_height())
-        left, right, top, bottom = 6, 6, 6, 6
-        plot_w = max(1, w - left - right)
-        plot_h = max(1, h - top - bottom)
-
-        colors = _get_graph_colors()
-        bg_color = colors["bg"]
-        grid_color = colors["grid"]
-        line_color = colors["line"]
-        text_color = colors["text"]
-
-        # sfondo canvas
-        self.configure(bg=bg_color)
-        self.create_rectangle(0, 0, w, h, fill=bg_color, outline="")
-
-        # nessun dato → solo griglia vuota
-        if not self.values:
-            self._draw_empty_grid(left, top, plot_w, plot_h, grid_color)
+        try:
+            w = self.winfo_width()
+            h = self.winfo_height()
+        except tk.TclError:
             return
 
-        # ------------------------------ 1) range dati -----------------------
-        ys = list(self.values)
-        data_max = max(ys)
+        if w < 2 or h < 2:
+            return
 
-        # vogliamo sempre partire da 0 (mai negativo)
-        vmin = 0.0
+        # FIX: Snapshot
+        data_snapshot = list(self.values)
 
-        if data_max <= 0:
-            # tutto zero: range minimo [0, 1]
-            vmax = 1.0
+        self.delete("all")
+
+        left, right, top, bottom = 40, 10, 10, 10
+        plot_w = w - left - right
+        plot_h = h - top - bottom
+
+        colors = _get_graph_colors()
+        self.configure(bg=colors["bg"])
+        grid_color = colors["grid"]
+        text_color = colors["text"]
+        line_color = colors["line"]
+
+        # --- Autoscale ---
+        if not data_snapshot:
+            curr_min, curr_max = 0, 10
         else:
-            # padding ~10% sopra il valore massimo
-            padding = max(1.0, data_max * 0.1)
-            vmax = data_max + padding
+            raw_max = max(data_snapshot)
+            curr_min = 0
+            if raw_max <= 0:
+                curr_max = 10
+            else:
+                curr_max = raw_max + (raw_max * 0.1)
 
-        # ------------------------------ 2) tick Y interi --------------------
-        min_i = math.floor(vmin)
-        max_i = math.ceil(vmax)
-        span = max_i - min_i
-        if span <= 0:
-            span = 1
+        if curr_max <= curr_min:
+            curr_max = curr_min + 1
 
-        approx_ticks = 5
-        step = max(1, math.ceil(span / approx_ticks))
-        ticks = list(range(min_i, max_i + 1, step))
+        # --- Griglia Orizzontale (interi) ---
+        span = curr_max - curr_min
+        step = max(1, math.ceil(span / 5))
 
-        # ------------------------------ 3) griglia + label Y ----------------
+        ticks = []
+        val = int(math.floor(curr_min))
+        # Limite di sicurezza per evitare loop infiniti
+        loop_safe = 0
+        while val <= curr_max and loop_safe < 50:
+            ticks.append(val)
+            val += step
+            loop_safe += 1
+
         for t in ticks:
-            frac = (t - vmin) / (vmax - vmin)
-            frac = max(0.0, min(1.0, frac))
-            y = top + plot_h * (1 - frac)
+            # Evita di disegnare fuori dal top se l'arrotondamento sfora
+            if t > curr_max: 
+                continue
 
-            self.create_line(left, y, left + plot_w, y, fill=grid_color)
+            y_raw = self._y_to_px(t, curr_min, curr_max, top, plot_h)
+            y_line = self._snap_line_y(y_raw, width=1)
+            y_text = self._snap_text_y(y_raw)
+
+            self.create_line(left, y_line, left + plot_w, y_line, fill=grid_color)
             self.create_text(
-                left + 5,
-                y,
-                text=str(t),
-                anchor="w",
+                left - 5, y_text,
+                text=str(int(t)),
+                anchor="e",
                 fill=text_color,
-                font=("Arial", 11),
+                font=("Arial", 10)
             )
 
-        # ------------------------------ 4) griglia verticale ----------------
-        num_vlines = 6
-        for i in range(1, num_vlines):
-            x = left + plot_w * (i / num_vlines)
-            self.create_line(x, top, x, top + plot_h, fill=grid_color)
-
-        # ------------------------------ 5) linea dati -----------------------
-        points = []
-        denom = (vmax - vmin) or 1.0
-        for i, v in enumerate(self.values):
-            x = left + plot_w * (i / max(1, len(self.values) - 1))
-            frac = (v - vmin) / denom
-            frac = max(0.0, min(1.0, frac))
-            y = top + plot_h * (1 - frac)
-            points.append((x, y))
-
-        if len(points) > 1:
-            flat = [coord for xy in points for coord in xy]
-            self.create_line(*flat, fill=line_color, width=1.8, smooth=True)
-
-    # -----------------------------------------------------------------
-    #       Griglia mostrata quando non ci sono dati
-    # -----------------------------------------------------------------
-
-    def _draw_empty_grid(self, left, top, plot_w, plot_h, grid_color):
-        # 5 righe orizzontali
-        for i in range(1, 6):
-            y = top + plot_h * (i / 6)
-            self.create_line(left, y, left + plot_w, y, fill=grid_color)
-
-        # 5 colonne verticali
+        # Griglia Verticale
         for i in range(1, 6):
             x = left + plot_w * (i / 6)
-            self.create_line(x, top, x, top + plot_h, fill=grid_color)
+            x_line = self._snap_line_y(x, width=1)
+            self.create_line(x_line, top, x_line, top + plot_h, fill=grid_color)
+
+        # --- Linea ---
+        if len(data_snapshot) > 1:
+            points = []
+            n_vals = len(data_snapshot)
+            denom = max(1, n_vals - 1)
+            
+            line_width = 2
+
+            for i, v in enumerate(data_snapshot):
+                x = left + plot_w * (i / denom)
+                # FIX: usa lo snap corretto per width=2
+                x_line = self._snap_line_y(x, width=line_width)
+
+                y_raw = self._y_to_px(v, curr_min, curr_max, top, plot_h)
+                y_line = self._snap_line_y(y_raw, width=line_width)
+
+                points.append(x_line)
+                points.append(y_line)
+
+            self.create_line(points, fill=line_color, width=line_width, smooth=True)
 
 
 # -------------------------------------------------------------------------
@@ -361,24 +364,20 @@ class GlobalGraph(TimeSeriesGraph):
 class ChannelPreview(ctk.CTkFrame):
     """
     Piccolo riquadro per ogni canale nella tab Channels.
-    Riga unica con "CH X" e "Particles: Y" sopra al mini-grafico.
-    Cliccabile con cursore a mano.
     """
 
     def __init__(self, master, channel_id: int, *args, click_callback=None, **kwargs):
-        # rimuovo il parametro personalizzato dai kwargs prima di passare a CTkFrame
-        kwargs.pop("click_callback", None)
+        # FIX: rimosso pop inutile, click_callback è già un argomento esplicito
         super().__init__(master, *args, **kwargs)
 
         self.channel_id = channel_id
         self._click_callback = click_callback
 
-        # layout interno: riga 0 header (CH + Particles), riga 1 grafico
         self.grid_rowconfigure(0, weight=0)
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # ------------------------------ header: "CH X" + "Particles: 0"
+        # Header
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.grid(row=0, column=0, sticky="we", padx=6, pady=(2, 1))
         header.grid_columnconfigure(0, weight=1)
@@ -394,35 +393,32 @@ class ChannelPreview(ctk.CTkFrame):
 
         self.particles_label = ctk.CTkLabel(
             header,
-            text="Particles: 0",
+            text="Pt: 0",
             font=ctk.CTkFont(size=10),
             anchor="e",
         )
         self.particles_label.grid(row=0, column=1, sticky="e", padx=(4, 0))
 
-        # ------------------------------ mini-grafico
+        # Grafico
         self.graph = TimeSeriesGraph(
             self,
             max_points=100,
             highlightthickness=0,
-            height=28,   # altezza parte grafico
+            height=30,
         )
         self.graph.grid(row=1, column=0, sticky="nsew", padx=6, pady=(0, 2))
 
-        # Rendo il riquadro cliccabile e con cursore "mano"
         if self._click_callback is not None:
             self._make_clickable(self)
             self._set_hand_cursor(self)
 
-    # ------------------------------------------------------------------ click
     def _make_clickable(self, widget):
-        """Applica il binding del click al widget e a tutti i figli."""
+        # Binds ricorsivi
         widget.bind("<Button-1>", self._on_click, add="+")
         for child in widget.winfo_children():
             self._make_clickable(child)
 
     def _set_hand_cursor(self, widget):
-        """Forza il cursore a 'hand2' su questo widget e su tutti i figli."""
         try:
             widget.configure(cursor="hand2")
         except tk.TclError:
@@ -434,24 +430,18 @@ class ChannelPreview(ctk.CTkFrame):
         if self._click_callback is not None:
             self._click_callback(self.channel_id)
 
-    # ------------------------------------------------------------------ dati
     def update_from_value(self, value: int):
-        """Aggiorna il mini-grafico."""
         self.graph.add_value(value)
 
     def add_value(self, value: int):
-        """Alias per compatibilità col resto del codice."""
         self.update_from_value(value)
 
     def set_display_mode(self, mode: str):
-        """Propaga la modalità di visualizzazione (bits/voltage) al mini-grafico."""
-        # il TimeSeriesGraph interno è in self.graph
         if hasattr(self, "graph"):
             self.graph.set_display_mode(mode)
 
     def set_particles(self, particles: int):
-        """Aggiorna 'Particles: X' nella riga di intestazione."""
-        self.particles_label.configure(text=f"Particles: {particles}")
+        self.particles_label.configure(text=f"Pt: {particles}")
 
 
 # -------------------------------------------------------------------------
@@ -459,7 +449,7 @@ class ChannelPreview(ctk.CTkFrame):
 # -------------------------------------------------------------------------
 
 class ChannelWindow(ctk.CTkToplevel):
-    """Finestra per il singolo canale (ADC + particelle)."""
+    """Finestra dettagliata singolo canale."""
 
     def __init__(self, master, channel_id: int, history=None, initial_particles=None):
         super().__init__(master)
@@ -523,9 +513,12 @@ class ChannelWindow(ctk.CTkToplevel):
         )
         self.graph.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
 
+        # FIX: Caricamento efficiente della history
         if history:
-            for v in history:
-                self.graph.add_value(v)
+            # Estendi la deque direttamente senza triggerare redraw N volte
+            self.graph.values.extend(history)
+            # Forza un redraw finale
+            self.graph.redraw(force=True)
 
     def update_from_value(self, adc_value: int, particles=None):
         self.graph.add_value(adc_value)

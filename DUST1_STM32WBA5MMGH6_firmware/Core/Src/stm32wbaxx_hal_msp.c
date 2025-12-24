@@ -175,6 +175,9 @@ void HAL_COMP_MspInit(COMP_HandleTypeDef* hcomp)
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+    /* COMP1 interrupt Init */
+    HAL_NVIC_SetPriority(COMP_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(COMP_IRQn);
     /* USER CODE BEGIN COMP1_MspInit 1 */
 
     /* USER CODE END COMP1_MspInit 1 */
@@ -204,6 +207,8 @@ void HAL_COMP_MspDeInit(COMP_HandleTypeDef* hcomp)
     */
     HAL_GPIO_DeInit(GPIOA, GPIO_PIN_2);
 
+    /* COMP1 interrupt DeInit */
+    HAL_NVIC_DisableIRQ(COMP_IRQn);
     /* USER CODE BEGIN COMP1_MspDeInit 1 */
 
     /* USER CODE END COMP1_MspDeInit 1 */

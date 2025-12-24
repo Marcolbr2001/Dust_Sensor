@@ -104,6 +104,8 @@ void MX_TIM16_Init(void);
 #define S2_GPIO_Port GPIOA
 #define S3_Pin GPIO_PIN_3
 #define S3_GPIO_Port GPIOA
+#define S4_Pin GPIO_PIN_1
+#define S4_GPIO_Port GPIOA
 #define SEL_Pin GPIO_PIN_5
 #define SEL_GPIO_Port GPIOA
 #define MUX_STATUS_Pin GPIO_PIN_13
@@ -112,8 +114,8 @@ void MX_TIM16_Init(void);
 #define DCC_Counter_GPIO_Port GPIOB
 #define RES_DCC_Pin GPIO_PIN_7
 #define RES_DCC_GPIO_Port GPIOB
-#define DCC_Select_Pin GPIO_PIN_5
-#define DCC_Select_GPIO_Port GPIOB
+#define DCC_Sel_Pin GPIO_PIN_5
+#define DCC_Sel_GPIO_Port GPIOB
 #define OUT_D_Pin GPIO_PIN_15
 #define OUT_D_GPIO_Port GPIOA
 #define OUT_P_Pin GPIO_PIN_4

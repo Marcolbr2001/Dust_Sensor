@@ -64,6 +64,7 @@ extern void (*low_isr_callback)(void);
 
 /* External variables --------------------------------------------------------*/
 extern volatile uint8_t radio_sw_low_isr_is_running_high_prio;
+extern COMP_HandleTypeDef hcomp1;
 extern LPTIM_HandleTypeDef hlptim1;
 extern RTC_HandleTypeDef hrtc;
 extern DMA_HandleTypeDef handle_GPDMA1_Channel4;
@@ -396,6 +397,20 @@ void TIM16_IRQHandler(void)
   /* USER CODE BEGIN TIM16_IRQn 1 */
 
   /* USER CODE END TIM16_IRQn 1 */
+}
+
+/**
+  * @brief This function handles COMP1 and COMP2 through EXTI Lines interrupts.
+  */
+void COMP_IRQHandler(void)
+{
+  /* USER CODE BEGIN COMP_IRQn 0 */
+
+  /* USER CODE END COMP_IRQn 0 */
+  HAL_COMP_IRQHandler(&hcomp1);
+  /* USER CODE BEGIN COMP_IRQn 1 */
+
+  /* USER CODE END COMP_IRQn 1 */
 }
 
 /**

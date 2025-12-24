@@ -23,6 +23,10 @@
 /* USER CODE BEGIN Includes */
 #include "log_module.h"
 #include "DUST_functions.h"
+
+#include "ff.h"
+#include "string.h"
+#include "stdio.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -68,6 +72,12 @@ DMA_HandleTypeDef handle_GPDMA1_Channel0;
 volatile uint8_t   g_uart_event_pending = 0;
 DustEvent_t        g_uart_event;
 uint16_t pwm_buf_main[] = {13000, 13000, 0, 0, 0, 0, 0, 0, 0, 0}; //to use in case of PWM DMA
+
+// --- VARIABILI PER SD ---
+FATFS fs;  // File system object
+FIL fil;   // File object
+FRESULT fres; // Result code
+volatile uint8_t g_sd_save_request = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -91,6 +101,107 @@ void MyDustEventHandler(const DustEvent_t *ev)
 
     g_uart_event = *ev;
     g_uart_event_pending = 1;
+}
+
+// Aggiungi queste variabili extern per sapere se dobbiamo riavviare lo stream
+extern volatile uint8_t g_ble_dust_stream_enabled;
+extern volatile uint8_t g_usb_dust_stream_enabled;
+
+void SD_Write_Test_File(void)
+{
+    // 1. FERMA TUTTO (Stop Timer e Abort violento su SPI)
+    HAL_LPTIM_Counter_Stop_IT(&hlptim1);
+    HAL_SPI_Abort(&hspi3);
+
+    // 2. Metti l'ADC in sicurezza (CS Alto = Disattivo)
+    HAL_GPIO_WritePin(GPIOB, DT_CS_Pin, GPIO_PIN_SET);
+    HAL_Delay(2); // Pausa respiro
+
+    // ===================================================
+    // FASE A: CONFIGURAZIONE "CHIRURGICA" PER SD
+    // ===================================================
+    HAL_SPI_DeInit(&hspi3); // Reset totale
+
+    // Parametri manuali SOLO per la SD
+    hspi3.Instance               = SPI3;
+    hspi3.Init.Mode              = SPI_MODE_MASTER;
+    hspi3.Init.Direction         = SPI_DIRECTION_2LINES;
+    hspi3.Init.DataSize          = SPI_DATASIZE_8BIT;
+    hspi3.Init.CLKPolarity       = SPI_POLARITY_LOW;
+    hspi3.Init.CLKPhase          = SPI_PHASE_1EDGE;
+    hspi3.Init.NSS               = SPI_NSS_SOFT;
+    hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256;
+    hspi3.Init.FirstBit          = SPI_FIRSTBIT_MSB;
+    hspi3.Init.TIMode            = SPI_TIMODE_DISABLE;
+    hspi3.Init.CRCCalculation    = SPI_CRCCALCULATION_DISABLE;
+    hspi3.Init.NSSPMode          = SPI_NSS_PULSE_DISABLE;    // Fondamentale
+    hspi3.Init.FifoThreshold     = SPI_FIFO_THRESHOLD_01DATA; // Fondamentale
+
+    if (HAL_SPI_Init(&hspi3) != HAL_OK) {
+         LED_BLINKING(TIM_CHANNEL_2, pwm_buf_main); // Rosso: Errore Init SD
+         return;
+    }
+
+    // Svuota buffer sporchi (Specifico STM32WBA)
+    while (__HAL_SPI_GET_FLAG(&hspi3, SPI_FLAG_RXP)) {
+        __IO uint8_t tmpreg = *((__IO uint8_t *)&hspi3.Instance->RXDR);
+        (void)tmpreg;
+    }
+    __HAL_SPI_CLEAR_OVRFLAG(&hspi3);
+    __HAL_SPI_ENABLE(&hspi3);
+
+    // ===================================================
+    // FASE B: SCRITTURA FILE
+    // ===================================================
+    HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
+
+    if (f_mount(&fs, "", 1) == FR_OK)
+    {
+        if (f_open(&fil, "TEST.TXT", FA_WRITE | FA_OPEN_ALWAYS | FA_OPEN_APPEND) == FR_OK)
+        {
+            char test_data[] = "LOG DATA: Scrittura OK\r\n";
+            UINT bytesWrote;
+            f_write(&fil, test_data, strlen(test_data), &bytesWrote);
+            f_close(&fil);
+            LED_BLINKING(TIM_CHANNEL_1, pwm_buf_main); // VERDE!
+        }
+    }
+    f_mount(NULL, "", 0); // Smonta
+
+    // ===================================================
+    // FASE C: RIPRISTINO TOTALE ADC (La parte che mancava)
+    // ===================================================
+
+    // 1. Reset dell'handle
+    HAL_SPI_DeInit(&hspi3);
+
+    // 2. LA MAGIA: Chiamiamo la funzione originale di CubeMX!
+    // Questo ricollega DMA, NVIC, 16-bit, Pulse Mode, e tutto il resto.
+    MX_SPI3_Init();
+
+    // 3. Pulizia finale preventiva
+    __HAL_SPI_CLEAR_OVRFLAG(&hspi3);
+    __HAL_SPI_CLEAR_MODFFLAG(&hspi3);
+    __HAL_SPI_CLEAR_FREFLAG(&hspi3);
+
+    // Nota: Non serve __HAL_SPI_ENABLE qui, lo fa già MX_SPI3_Init o la prima chiamata HAL
+
+    // 4. Ripristina CS ADC basso (Stato di riposo)
+    HAL_GPIO_WritePin(GPIOB, DT_CS_Pin, GPIO_PIN_RESET);
+
+    // 5. IMPORTANTE: Riarmo del DMA?
+    // Se la tua acquisizione funzionava in modalità CIRCOLARE (gira sempre),
+    // devi riattivarla qui. Se invece è attivata dal Timer LPTIM ogni volta,
+    // basta riattivare il timer.
+
+    // Se usavi DMA Circolare all'avvio (check nel codice originale), scommenta questa:
+    // HAL_SPI_Receive_DMA(&hspi3, (uint8_t*)Rx_Data_Buffer, 1);
+
+    // 6. Riavvia Timer
+    if (g_usb_dust_stream_enabled || g_ble_dust_stream_enabled)
+    {
+        HAL_LPTIM_Counter_Start_IT(&hlptim1);
+    }
 }
 /* USER CODE END 0 */
 
@@ -139,11 +250,33 @@ int main(void)
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   //HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET); //Con questa linea attiviamo la board del sensore
   DUST_Init();
   DUST_SetCallback(MyDustEventHandler);
 
   LED_BLINKING(TIM_CHANNEL_1, pwm_buf_main); // --> Green turns on, board ON
+
+
+    HAL_NVIC_DisableIRQ(COMP_IRQn);
+    HAL_COMP_Start(&hcomp1);
+    HAL_Delay(50);
+    EXTI->RPR1 = (1 << 17); // Pulisci flag Rising pendente (Linea 17)
+    EXTI->FPR1 = (1 << 17); // Pulisci flag Falling pendente (Linea 17)
+    HAL_NVIC_ClearPendingIRQ(COMP_IRQn);
+    HAL_NVIC_EnableIRQ(COMP_IRQn);
+
+  //HAL_GPIO_WritePin(GPIOB, GPIO_PIN_11, GPIO_PIN_SET); //Do not read SD
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_SET); //Attiviamo Chip SPI ADC per non lasciarlo flottante
+
+
+
+  //HAL_COMP_Start(&hcomp1); //Comincia a verificare che la corrente sia minore del limite
+  //HAL_Delay(10); // Aspetta che il segnale si stabilizzi
+  // Pulisce il flag di salita (Rising Edge Pending Register)
+  //EXTI->RPR1 = (1 << 17);
+  // Pulisce il flag di discesa (Falling Edge Pending Register)
+  //EXTI->FPR1 = (1 << 17);
+
   //HAL_LPTIM_Counter_Start_IT(&hlptim1);
   /* USER CODE END 2 */
 
@@ -158,6 +291,15 @@ int main(void)
     MX_APPE_Process();
 
     /* USER CODE BEGIN 3 */
+
+
+    // Gestione asincrona salvataggio SD
+	if (g_sd_save_request)
+	{
+		g_sd_save_request = 0; // Reset flag
+		SD_Write_Test_File();  // Esegue scrittura col cambio velocità corretto
+	}
+
     //HAL_UART_Transmit_DMA(&huart1, test_message, message_size);
     //LOG_INFO_APP("PROVAAAAAAA numero %d", 1);
     //HAL_Delay(500);
@@ -348,14 +490,14 @@ static void MX_COMP1_Init(void)
   /* USER CODE END COMP1_Init 1 */
   hcomp1.Instance = COMP1;
   hcomp1.Init.InputPlus = COMP_INPUT_PLUS_IO1;
-  hcomp1.Init.InputMinus = COMP_INPUT_MINUS_1_4VREFINT;
+  hcomp1.Init.InputMinus = COMP_INPUT_MINUS_3_4VREFINT;
   hcomp1.Init.OutputPol = COMP_OUTPUTPOL_NONINVERTED;
   hcomp1.Init.WindowOutput = COMP_WINDOWOUTPUT_EACH_COMP;
   hcomp1.Init.Hysteresis = COMP_HYSTERESIS_NONE;
   hcomp1.Init.BlankingSrce = COMP_BLANKINGSRC_NONE;
   hcomp1.Init.Mode = COMP_POWERMODE_HIGHSPEED;
   hcomp1.Init.WindowMode = COMP_WINDOWMODE_DISABLE;
-  hcomp1.Init.TriggerMode = COMP_TRIGGERMODE_NONE;
+  hcomp1.Init.TriggerMode = COMP_TRIGGERMODE_IT_RISING_FALLING;
   if (HAL_COMP_Init(&hcomp1) != HAL_OK)
   {
     Error_Handler();
@@ -627,7 +769,7 @@ static void MX_SPI3_Init(void)
   hspi3.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi3.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi3.Init.CRCPolynomial = 0x7;
-  hspi3.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  hspi3.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
   hspi3.Init.NSSPolarity = SPI_NSS_POLARITY_LOW;
   hspi3.Init.FifoThreshold = SPI_FIFO_THRESHOLD_01DATA;
   hspi3.Init.MasterSSIdleness = SPI_MASTER_SS_IDLENESS_00CYCLE;
@@ -817,31 +959,43 @@ void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, DT_CS_Pin|SD_CS_Pin|DCC_Counter_Pin|RES_DCC_Pin
-                          |DCC_Select_Pin|Hfb1_Pin|Hfb2_Pin|Enable_Sensor_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, DT_CS_Pin|RES_DCC_Pin|DCC_Sel_Pin|Hfb1_Pin
+                          |Hfb2_Pin|Enable_Sensor_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, S0_Pin|S1_Pin|S2_Pin|S3_Pin
-                          |SEL_Pin|RES_ch_read_Pin, GPIO_PIN_RESET);
+                          |S4_Pin|SEL_Pin|RES_ch_read_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);
-
-  /*Configure GPIO pins : DT_CS_Pin SD_CS_Pin DCC_Counter_Pin RES_DCC_Pin
-                           DCC_Select_Pin Hfb1_Pin Hfb2_Pin Enable_Sensor_Pin */
-  GPIO_InitStruct.Pin = DT_CS_Pin|SD_CS_Pin|DCC_Counter_Pin|RES_DCC_Pin
-                          |DCC_Select_Pin|Hfb1_Pin|Hfb2_Pin|Enable_Sensor_Pin;
+  /*Configure GPIO pins : DT_CS_Pin Enable_Sensor_Pin */
+  GPIO_InitStruct.Pin = DT_CS_Pin|Enable_Sensor_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : SD_CS_Pin Hfb1_Pin */
+  GPIO_InitStruct.Pin = SD_CS_Pin|Hfb1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
   /*Configure GPIO pins : S0_Pin S1_Pin S2_Pin S3_Pin
-                           PA1 SEL_Pin RES_ch_read_Pin */
+                           S4_Pin */
   GPIO_InitStruct.Pin = S0_Pin|S1_Pin|S2_Pin|S3_Pin
-                          |GPIO_PIN_1|SEL_Pin|RES_ch_read_Pin;
+                          |S4_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : SEL_Pin RES_ch_read_Pin */
+  GPIO_InitStruct.Pin = SEL_Pin|RES_ch_read_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
@@ -851,17 +1005,42 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(MUX_STATUS_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : OUT_D_Pin OUT_N_Pin */
-  GPIO_InitStruct.Pin = OUT_D_Pin|OUT_N_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  /*Configure GPIO pin : DCC_Counter_Pin */
+  GPIO_InitStruct.Pin = DCC_Counter_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(DCC_Counter_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : OUT_P_Pin SD_DETECT_Pin */
-  GPIO_InitStruct.Pin = OUT_P_Pin|SD_DETECT_Pin;
+  /*Configure GPIO pins : RES_DCC_Pin DCC_Sel_Pin Hfb2_Pin */
+  GPIO_InitStruct.Pin = RES_DCC_Pin|DCC_Sel_Pin|Hfb2_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : OUT_D_Pin */
+  GPIO_InitStruct.Pin = OUT_D_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(OUT_D_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : OUT_P_Pin */
+  GPIO_InitStruct.Pin = OUT_P_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(OUT_P_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : OUT_N_Pin */
+  GPIO_InitStruct.Pin = OUT_N_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(OUT_N_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : SD_DETECT_Pin */
+  GPIO_InitStruct.Pin = SD_DETECT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  HAL_GPIO_Init(SD_DETECT_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

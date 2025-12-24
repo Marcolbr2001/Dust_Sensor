@@ -54,6 +54,8 @@ uint16_t transfer_length = 1; // 1 parola (unità di 16 bit)
 volatile uint8_t g_ble_dust_stream_enabled = 0;
 volatile uint8_t g_usb_dust_stream_enabled = 0;
 
+extern volatile uint8_t g_sd_save_request; // Dichiarazione extern
+
 
 // -------------------- strutture dati per canali ------ //
 typedef enum
@@ -229,22 +231,22 @@ void DATA_RECEIVED(const uint8_t *data_received, uint16_t len)
 
 		break;
 
+		// --- NUOVO COMANDO PER SD ---
+		case 'S': // 'S' come Save o SD
+
+			// Se invii "S" dalla GUI, prova a scrivere il file
+			//SD_Write_Test_File();
+
+			g_sd_save_request = 1; // Alza bandierina, il main farà il lavoro sporco
+
+			// Feedback visivo (es. Led Blu breve)
+			// LED_BLINKING(TIM_CHANNEL_3, pwm_buf);
+			break;
 
 		case '0':
 			HAL_LPTIM_Counter_Stop_IT(&hlptim1);
 			g_ble_dust_stream_enabled = 0;
 			g_usb_dust_stream_enabled = 0;
-
-			//CHANNEL_SET(1); //Led off
-
-			HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
-			HAL_TIM_PWM_Stop_DMA(&htim3, TIM_CHANNEL_1);
-
-			HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_2);
-			HAL_TIM_PWM_Stop_DMA(&htim3, TIM_CHANNEL_2);
-
-			HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);
-			HAL_TIM_PWM_Stop_DMA(&htim3, TIM_CHANNEL_3);
 
 			break;
 
@@ -288,7 +290,7 @@ void GET_ADC_VALUES()
 {
 	CHANNEL_SET(9);
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_SET); //Read dust chip values
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_RESET); //Read dust chip values
+	//HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_RESET); //Read dust chip values
 	//HAL_GPIO_WritePin(GPIOB, GPIO_PIN_11, GPIO_PIN_RESET); //Do not read SD
 	HAL_StatusTypeDef status;
 	HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_1);
@@ -691,4 +693,40 @@ void DUST_SendFrame_UART(void)
 	}
 
 	HAL_UART_Transmit_DMA(&huart1, uart_frame, len);
+}
+
+void HAL_COMP_TriggerCallback(COMP_HandleTypeDef *hcomp)
+{
+    // Verifichiamo che sia stato il COMP1
+    if (hcomp->Instance == COMP1)
+    {
+        // Il segnale su PA2 ha appena superato 1/4 Vref.
+    	// Analizziamo se è un rising o falling edge
+    	uint32_t compOutput = HAL_COMP_GetOutputLevel(hcomp);
+
+		if (compOutput == COMP_OUTPUT_LEVEL_HIGH)
+		{
+			// === RISING EDGE DETECTED ===
+			// Il segnale è salito SOPRA la soglia
+			// Accendi LED Rosso
+			LED_BLINKING(TIM_CHANNEL_2, pwm_buf); //red --> questo è collegato al led della EBoard
+
+			//Spegniamo subito il sensore
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET); //Con questa linea disattiviamo la power rail del sensore
+
+		}
+		else
+		{
+			// === FALLING EDGE DETECTED ===
+			// Il segnale è sceso SOTTO la soglia
+			// Il sensore è tornato a lavorare in codizioni sicure --> Accendi Led Verde e sensore o non fare nulla
+			//LED_BLINKING(TIM_CHANNEL_1, pwm_buf); //red --> questo è collegato al led della EBoard
+
+			//LED_BLINKING(TIM_CHANNEL_1, pwm_buf); //red --> questo è collegato al led della EBoard
+
+			//Spegniamo subito il sensore
+			//HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET); //Con questa linea disattiviamo la power rail del sensore
+		}
+
+    }
 }

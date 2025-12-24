@@ -104,7 +104,8 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../STM32_WPAN/App/ble_sensor.h \
  ../Middlewares/ST/STM32_WPAN/ble/svc/Inc/svc_ctl.h \
  ../Core/Inc/stm32_rtos.h ../Utilities/sequencer/stm32_seq.h \
- ../Utilities/tim_serv/stm32_timer.h
+ ../Utilities/tim_serv/stm32_timer.h ../Core/Inc/ff.h \
+ ../Core/Inc/ffconf.h
 ../Core/Inc/main.h:
 ../Drivers/STM32WBAxx_HAL_Driver/Inc/stm32wbaxx_hal.h:
 ../Core/Inc/stm32wbaxx_hal_conf.h:
@@ -220,3 +221,5 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Core/Inc/stm32_rtos.h:
 ../Utilities/sequencer/stm32_seq.h:
 ../Utilities/tim_serv/stm32_timer.h:
+../Core/Inc/ff.h:
+../Core/Inc/ffconf.h:
