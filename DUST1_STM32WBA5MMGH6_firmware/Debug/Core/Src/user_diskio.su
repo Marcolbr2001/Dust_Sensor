@@ -6,8 +6,8 @@
 ../Core/Src/user_diskio.c:68:12:select	8	static
 ../Core/Src/user_diskio.c:76:16:send_cmd	24	static
 ../Core/Src/user_diskio.c:117:9:disk_initialize	40	static
-../Core/Src/user_diskio.c:162:9:disk_read	40	static
-../Core/Src/user_diskio.c:186:9:disk_write	32	static
-../Core/Src/user_diskio.c:205:9:disk_ioctl	16	static
-../Core/Src/user_diskio.c:206:9:disk_status	16	static
-../Core/Src/user_diskio.c:207:7:get_fattime	4	static
+../Core/Src/user_diskio.c:162:9:disk_write	32	static
+../Core/Src/user_diskio.c:192:9:disk_read	32	static
+../Core/Src/user_diskio.c:216:9:disk_ioctl	16	static
+../Core/Src/user_diskio.c:217:9:disk_status	16	static
+../Core/Src/user_diskio.c:218:7:get_fattime	4	static

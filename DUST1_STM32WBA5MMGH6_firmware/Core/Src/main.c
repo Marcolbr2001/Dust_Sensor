@@ -106,98 +106,102 @@ void MyDustEventHandler(const DustEvent_t *ev)
 // Aggiungi queste variabili extern per sapere se dobbiamo riavviare lo stream
 extern volatile uint8_t g_ble_dust_stream_enabled;
 extern volatile uint8_t g_usb_dust_stream_enabled;
+static uint8_t SD_is_mounted = 0;
 
 void SD_Write_Test_File(void)
 {
-    // 1. FERMA TUTTO (Stop Timer e Abort violento su SPI)
+    // =================================================================
+    // 1. STOP & SAVE CONTEXT
+    // =================================================================
     HAL_LPTIM_Counter_Stop_IT(&hlptim1);
+
+    // Abort per pulire il bus SPI e il DMA da eventuali residui ADC
     HAL_SPI_Abort(&hspi3);
 
-    // 2. Metti l'ADC in sicurezza (CS Alto = Disattivo)
+    // Metti in sicurezza il CS dell'ADC (Alto = Disattivo)
     HAL_GPIO_WritePin(GPIOB, DT_CS_Pin, GPIO_PIN_SET);
-    HAL_Delay(2); // Pausa respiro
 
-    // ===================================================
-    // FASE A: CONFIGURAZIONE "CHIRURGICA" PER SD
-    // ===================================================
-    HAL_SPI_DeInit(&hspi3); // Reset totale
+    // =================================================================
+    // 2. RE-CONFIGURAZIONE SPI (Mode: SD CARD)
+    // =================================================================
+    // Disabilitiamo per cambiare i parametri "al volo"
+    __HAL_SPI_DISABLE(&hspi3);
 
-    // Parametri manuali SOLO per la SD
-    hspi3.Instance               = SPI3;
-    hspi3.Init.Mode              = SPI_MODE_MASTER;
-    hspi3.Init.Direction         = SPI_DIRECTION_2LINES;
-    hspi3.Init.DataSize          = SPI_DATASIZE_8BIT;
-    hspi3.Init.CLKPolarity       = SPI_POLARITY_LOW;
-    hspi3.Init.CLKPhase          = SPI_PHASE_1EDGE;
-    hspi3.Init.NSS               = SPI_NSS_SOFT;
-    hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256;
-    hspi3.Init.FirstBit          = SPI_FIRSTBIT_MSB;
-    hspi3.Init.TIMode            = SPI_TIMODE_DISABLE;
-    hspi3.Init.CRCCalculation    = SPI_CRCCALCULATION_DISABLE;
-    hspi3.Init.NSSPMode          = SPI_NSS_PULSE_DISABLE;    // Fondamentale
-    hspi3.Init.FifoThreshold     = SPI_FIFO_THRESHOLD_01DATA; // Fondamentale
+    // Impostiamo solo ciò che differisce dall'ADC
+    hspi3.Init.DataSize          = SPI_DATASIZE_8BIT;         // ADC: 16bit -> SD: 8bit
+    hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;   // Velocità SD (Regola se necessario: 8, 16, 32)
+    hspi3.Init.NSSPMode          = SPI_NSS_PULSE_DISABLE;     // FONDAMENTALE: No impulsi CS
+    hspi3.Init.FifoThreshold     = SPI_FIFO_THRESHOLD_01DATA; // FONDAMENTALE: Gestione byte
 
+    // HAL_SPI_Init applica le modifiche ai registri senza resettare tutto
     if (HAL_SPI_Init(&hspi3) != HAL_OK) {
-         LED_BLINKING(TIM_CHANNEL_2, pwm_buf_main); // Rosso: Errore Init SD
-         return;
+         // Se fallisce l'init, non possiamo fare nulla.
+         // Usciamo per far ripartire l'ADC alla fine.
+         LED_BLINKING(TIM_CHANNEL_2, pwm_buf_main); // Segnalazione Errore
     }
-
-    // Svuota buffer sporchi (Specifico STM32WBA)
-    while (__HAL_SPI_GET_FLAG(&hspi3, SPI_FLAG_RXP)) {
-        __IO uint8_t tmpreg = *((__IO uint8_t *)&hspi3.Instance->RXDR);
-        (void)tmpreg;
-    }
-    __HAL_SPI_CLEAR_OVRFLAG(&hspi3);
-    __HAL_SPI_ENABLE(&hspi3);
-
-    // ===================================================
-    // FASE B: SCRITTURA FILE
-    // ===================================================
-    HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
-
-    if (f_mount(&fs, "", 1) == FR_OK)
+    else // Se Init OK, procediamo
     {
-        if (f_open(&fil, "TEST.TXT", FA_WRITE | FA_OPEN_ALWAYS | FA_OPEN_APPEND) == FR_OK)
+        // Pulizia buffer RX (Specifico STM32WBA per evitare byte sporchi nel cambio 16->8)
+        while (__HAL_SPI_GET_FLAG(&hspi3, SPI_FLAG_RXP)) {
+            __IO uint8_t tmpreg = *((__IO uint8_t *)&hspi3.Instance->RXDR);
+            (void)tmpreg;
+        }
+        __HAL_SPI_ENABLE(&hspi3);
+
+        // =================================================================
+        // 3. LOGICA FILE SYSTEM
+        // =================================================================
+
+        // A. Gestione Mount (Lazy Loading)
+        if (SD_is_mounted == 0)
         {
-            char test_data[] = "LOG DATA: Scrittura OK\r\n";
-            UINT bytesWrote;
-            f_write(&fil, test_data, strlen(test_data), &bytesWrote);
-            f_close(&fil);
-            LED_BLINKING(TIM_CHANNEL_1, pwm_buf_main); // VERDE!
+            if (f_mount(&fs, "", 1) == FR_OK) {
+                SD_is_mounted = 1;
+            }
+            // Se fallisce il mount, SD_is_mounted resta 0 e saltiamo la scrittura
+        }
+
+        // B. Scrittura (Solo se montato)
+        if (SD_is_mounted == 1)
+        {
+            if (f_open(&fil, "TEST.TXT", FA_WRITE | FA_OPEN_ALWAYS | FA_OPEN_APPEND) == FR_OK)
+            {
+                char test_data[] = "LOG DATA2: OK\n"; // Stringa corta = veloce
+                UINT bytesWrote;
+
+                // Ora disk_write userà il blocco veloce HAL_SPI_Transmit!
+                f_write(&fil, test_data, strlen(test_data), &bytesWrote);
+                f_close(&fil); // Salva fisicamente
+
+                // LED VERDE (Opzionale, togliere per max velocità)
+                // LED_BLINKING(TIM_CHANNEL_1, pwm_buf_main);
+            }
+            else
+            {
+                // Se f_open fallisce, presumiamo problemi alla SD -> Resettiamo stato
+                SD_is_mounted = 0;
+            }
         }
     }
-    f_mount(NULL, "", 0); // Smonta
 
-    // ===================================================
-    // FASE C: RIPRISTINO TOTALE ADC (La parte che mancava)
-    // ===================================================
+    // =================================================================
+    // 4. RIPRISTINO TOTALE (Mode: ADC)
+    // =================================================================
 
-    // 1. Reset dell'handle
-    HAL_SPI_DeInit(&hspi3);
+    // Disabilita per riconfigurare
+    __HAL_SPI_DISABLE(&hspi3);
 
-    // 2. LA MAGIA: Chiamiamo la funzione originale di CubeMX!
-    // Questo ricollega DMA, NVIC, 16-bit, Pulse Mode, e tutto il resto.
+    // Usiamo MX_SPI3_Init() perché è il modo più sicuro per rimettere
+    // a posto DMA, NVIC e configurazione 16-bit complessa dell'ADC.
     MX_SPI3_Init();
 
-    // 3. Pulizia finale preventiva
+    // Pulizia flag di errore (OVR spesso si alza durante le manipolazioni manuali)
     __HAL_SPI_CLEAR_OVRFLAG(&hspi3);
-    __HAL_SPI_CLEAR_MODFFLAG(&hspi3);
-    __HAL_SPI_CLEAR_FREFLAG(&hspi3);
 
-    // Nota: Non serve __HAL_SPI_ENABLE qui, lo fa già MX_SPI3_Init o la prima chiamata HAL
-
-    // 4. Ripristina CS ADC basso (Stato di riposo)
+    // Ripristina CS ADC basso (Pronto per acquisizione)
     HAL_GPIO_WritePin(GPIOB, DT_CS_Pin, GPIO_PIN_RESET);
 
-    // 5. IMPORTANTE: Riarmo del DMA?
-    // Se la tua acquisizione funzionava in modalità CIRCOLARE (gira sempre),
-    // devi riattivarla qui. Se invece è attivata dal Timer LPTIM ogni volta,
-    // basta riattivare il timer.
-
-    // Se usavi DMA Circolare all'avvio (check nel codice originale), scommenta questa:
-    // HAL_SPI_Receive_DMA(&hspi3, (uint8_t*)Rx_Data_Buffer, 1);
-
-    // 6. Riavvia Timer
+    // Riavvia Timer Acquisizione
     if (g_usb_dust_stream_enabled || g_ble_dust_stream_enabled)
     {
         HAL_LPTIM_Counter_Start_IT(&hlptim1);

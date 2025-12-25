@@ -157,21 +157,27 @@ DSTATUS disk_initialize(BYTE pdrv) {
 }
 
 /*-----------------------------------------------------------------------*/
-/* Lettura                                                               */
+/* Scrittura OTTIMIZZATA (Block Transfer)                                */
 /*-----------------------------------------------------------------------*/
-DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count) {
+DRESULT disk_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count) {
     if (pdrv || !count) return RES_PARERR;
-    if (send_cmd(CMD17, sector) == 0) { // READ_SINGLE_BLOCK
-        // Wait data token
-        uint16_t tmr = 2000;
-        uint8_t d;
-        do {
-            d = rcvr_spi();
-        } while (d != 0xFE && --tmr);
 
-        if (d == 0xFE) {
-            for (uint16_t i = 0; i < 512; i++) *buff++ = rcvr_spi();
-            rcvr_spi(); rcvr_spi(); // CRC
+    // Nota: count è il numero di settori, di solito 1 per i log
+    if (send_cmd(CMD24, sector) == 0) { // WRITE_BLOCK
+        xmit_spi(0xFF); // Dummy
+        xmit_spi(0xFE); // Data token
+
+        // --- OTTIMIZZAZIONE QUI ---
+        // Invece del ciclo for byte per byte, usiamo la HAL per inviare tutto il blocco
+        // Questo riduce l'overhead della CPU del 90%
+        HAL_SPI_Transmit(&hspi3, (uint8_t*)buff, 512, 1000);
+        // --------------------------
+
+        xmit_spi(0xFF); xmit_spi(0xFF); // CRC Dummy
+
+        uint8_t resp = rcvr_spi();
+        if ((resp & 0x1F) == 0x05) { // Data Accepted
+            wait_ready();
             deselect();
             return RES_OK;
         }
@@ -181,19 +187,24 @@ DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count) {
 }
 
 /*-----------------------------------------------------------------------*/
-/* Scrittura                                                             */
+/* Lettura OTTIMIZZATA (Block Transfer)                                  */
 /*-----------------------------------------------------------------------*/
-DRESULT disk_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count) {
+DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count) {
     if (pdrv || !count) return RES_PARERR;
-    if (send_cmd(CMD24, sector) == 0) { // WRITE_BLOCK
-        xmit_spi(0xFF); // Dummy
-        xmit_spi(0xFE); // Data token
-        for (uint16_t i = 0; i < 512; i++) xmit_spi(*buff++);
-        xmit_spi(0xFF); xmit_spi(0xFF); // CRC Dummy
+    if (send_cmd(CMD17, sector) == 0) { // READ_SINGLE_BLOCK
+        uint16_t tmr = 2000;
+        uint8_t d;
+        do {
+            d = rcvr_spi();
+        } while (d != 0xFE && --tmr);
 
-        uint8_t resp = rcvr_spi();
-        if ((resp & 0x1F) == 0x05) { // Data Accepted
-            wait_ready(); // Aspetta fine scrittura flash interna
+        if (d == 0xFE) {
+            // --- OTTIMIZZAZIONE QUI ---
+            // Riceviamo 512 byte in un colpo solo
+            HAL_SPI_Receive(&hspi3, buff, 512, 1000);
+            // --------------------------
+
+            rcvr_spi(); rcvr_spi(); // CRC
             deselect();
             return RES_OK;
         }
