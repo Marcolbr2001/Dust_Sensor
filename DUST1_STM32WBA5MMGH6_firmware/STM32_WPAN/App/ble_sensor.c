@@ -70,7 +70,7 @@ typedef struct{
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-static const uint16_t SizeMydata = 164;
+static const uint16_t SizeMydata = 100;
 static const uint16_t SizeRecdata = 3;
 
 static BLE_SENSOR_Context_t BLE_SENSOR_Context;

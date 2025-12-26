@@ -99,7 +99,7 @@ static DustEventCallback_t  g_dust_cb = NULL;   // callback utente
 static uint8_t              next_ch = 0u;
 static uint8_t  			sending_round   = 0u;
 
-static uint8_t uart_frame[2 + DUST_CHANNELS * 5 + 2]; // header + 32*(sync+ch+count+2B) + "\r\n"
+static uint8_t uart_frame[2 + DUST_CHANNELS * 3 + 2]; // header + 32*(sync+ch+count+2B) + "\r\n"
 
 
 // ---------------------------------------------- //
@@ -665,8 +665,8 @@ uint16_t DUST_BuildFrame(uint8_t *dst, uint16_t max_len)
     {
         uint16_t adc = g_ch[ch].last_raw;        // oppure last_filtered
 
-        *p++ = PKT_SYNC_CAN;
-        *p++ = ch;                               // channel number
+        //*p++ = PKT_SYNC_CAN;
+        //*p++ = ch;                               // channel number
         *p++ = g_ch[ch].particle_count;
         *p++ = (uint8_t)(adc >> 8);              // ADC_HI
         *p++ = (uint8_t)(adc & 0xFF);            // ADC_LO
