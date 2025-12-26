@@ -36,7 +36,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+// BUFFER RAM per salvataggio SD
+#define RAM_BUFFER_SIZE  32768  // 8 KB di buffer totale
+#define WRITE_THRESHOLD  16384   // Scriviamo su SD quando arriviamo a metà (4KB)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -78,6 +80,10 @@ FATFS fs;  // File system object
 FIL fil;   // File object
 FRESULT fres; // Result code
 volatile uint8_t g_sd_save_request = 0;
+
+uint8_t g_ram_buffer[RAM_BUFFER_SIZE];
+// Indice dove siamo arrivati a riempire
+uint32_t g_ram_head = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -108,7 +114,7 @@ extern volatile uint8_t g_ble_dust_stream_enabled;
 extern volatile uint8_t g_usb_dust_stream_enabled;
 static uint8_t SD_is_mounted = 0;
 
-void SD_Write_Test_File(void)
+void SD_Write_Buffer(uint8_t *pData, uint32_t length)
 {
     // =================================================================
     // 1. STOP & SAVE CONTEXT
@@ -164,18 +170,16 @@ void SD_Write_Test_File(void)
         // B. Scrittura (Solo se montato)
         if (SD_is_mounted == 1)
         {
-            if (f_open(&fil, "TEST.TXT", FA_WRITE | FA_OPEN_ALWAYS | FA_OPEN_APPEND) == FR_OK)
-            {
-                char test_data[] = "LOG DATA2: OK\n"; // Stringa corta = veloce
-                UINT bytesWrote;
+        	if (f_open(&fil, "DATA.BIN", FA_WRITE | FA_OPEN_ALWAYS | FA_OPEN_APPEND) == FR_OK)
+			{
+				UINT bytesWrote;
 
-                // Ora disk_write userà il blocco veloce HAL_SPI_Transmit!
-                f_write(&fil, test_data, strlen(test_data), &bytesWrote);
-                f_close(&fil); // Salva fisicamente
+				// QUI LA DIFFERENZA: Scriviamo i dati passati dalla RAM
+				f_write(&fil, pData, length, &bytesWrote);
 
-                // LED VERDE (Opzionale, togliere per max velocità)
-                // LED_BLINKING(TIM_CHANNEL_1, pwm_buf_main);
-            }
+				f_close(&fil);
+				// LED_BLINKING(TIM_CHANNEL_1, pwm_buf_main);
+			}
             else
             {
                 // Se f_open fallisce, presumiamo problemi alla SD -> Resettiamo stato
@@ -301,7 +305,8 @@ int main(void)
 	if (g_sd_save_request)
 	{
 		g_sd_save_request = 0; // Reset flag
-		SD_Write_Test_File();  // Esegue scrittura col cambio velocità corretto
+		SD_Write_Buffer(g_ram_buffer, g_ram_head);  // Esegue scrittura col cambio velocità corretto
+		g_ram_head = 0;
 	}
 
     //HAL_UART_Transmit_DMA(&huart1, test_message, message_size);

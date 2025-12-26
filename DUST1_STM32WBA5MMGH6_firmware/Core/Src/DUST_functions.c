@@ -55,7 +55,10 @@ volatile uint8_t g_ble_dust_stream_enabled = 0;
 volatile uint8_t g_usb_dust_stream_enabled = 0;
 
 extern volatile uint8_t g_sd_save_request; // Dichiarazione extern
+uint8_t g_enable_sd_saving = 0;
 
+extern uint8_t g_ram_buffer[];
+extern uint32_t g_ram_head;
 
 // -------------------- strutture dati per canali ------ //
 typedef enum
@@ -237,10 +240,11 @@ void DATA_RECEIVED(const uint8_t *data_received, uint16_t len)
 			// Se invii "S" dalla GUI, prova a scrivere il file
 			//SD_Write_Test_File();
 
-			g_sd_save_request = 1; // Alza bandierina, il main farà il lavoro sporco
+			if (len >= 2 && data_received[1] == '0')
+				g_enable_sd_saving = 0;
+			else
+				g_enable_sd_saving = 1;
 
-			// Feedback visivo (es. Led Blu breve)
-			// LED_BLINKING(TIM_CHANNEL_3, pwm_buf);
 			break;
 
 		case '0':
@@ -367,6 +371,15 @@ void HAL_LPTIM_AutoReloadMatchCallback(LPTIM_HandleTypeDef *hlptim)
         //dust_send_pending = 1;
         
         sending_round++;
+
+
+        if (g_enable_sd_saving == 1)
+        {
+			uint16_t RAM_frame_len = DUST_BuildFrame_RAM(uart_frame, sizeof(uart_frame));
+
+			if(RAM_frame_len > 0)
+				DUST_Save_To_Ram(uart_frame, RAM_frame_len);
+        }
 
         // Invio dati una volta ogni N giri
         if (sending_round >= SENDING_ROUND)
@@ -729,4 +742,61 @@ void HAL_COMP_TriggerCallback(COMP_HandleTypeDef *hcomp)
 		}
 
     }
+}
+
+void DUST_Save_To_Ram(uint8_t *new_data, uint16_t data_len)
+{
+    // 1. Controllo sicurezza: C'è spazio nel buffer?
+    if ((g_ram_head + data_len) >= RAM_BUFFER_SIZE)
+    {
+        // Buffer pieno! Ripartiamo da zero (Circular Buffer)
+        // o perdiamo il dato se non ancora salvato.
+        // Per ora reset semplice per evitare crash:
+        g_ram_head = 0;
+    }
+
+    // 2. SCRITTURA IN RAM (Copia veloce)
+    // memcpy(destinazione, sorgente, lunghezza)
+    memcpy(&g_ram_buffer[g_ram_head], new_data, data_len);
+
+    // 3. Avanziamo l'indice
+    g_ram_head += data_len;
+
+    // 4. Controlliamo se è ora di scaricare su SD
+    if (g_ram_head >= WRITE_THRESHOLD)
+    {
+        // Alziamo la bandierina!
+        // Il while(1) nel main se ne accorgerà e fermerà tutto per salvare.
+        g_sd_save_request = 1;
+    }
+}
+
+uint16_t DUST_BuildFrame_RAM(uint8_t *dst, uint16_t max_len)
+{
+    uint8_t *p = dst;
+
+    // Header
+    *p++ = FRAME_SYNC1;
+    *p++ = FRAME_SYNC2;
+
+    // Corpo: per ogni canale -> [PKT_SYNC_CAN][CHANNEL][PARTICLES][ADC_MSB][ADC_LSB]
+    for (uint8_t ch = 0; ch < DUST_CHANNELS; ch++)
+    {
+        uint16_t adc = g_ch[ch].last_raw;        // oppure last_filtered
+
+        //*p++ = PKT_SYNC_CAN;
+        //*p++ = ch;                               // channel number
+        *p++ = (uint8_t)(adc >> 8);              // ADC_HI
+        *p++ = (uint8_t)(adc & 0xFF);            // ADC_LO
+    }
+
+    // Terminatore di riga
+    *p++ = '\r';
+    *p++ = '\n';
+
+    //uint16_t total_len = (uint16_t)(p - uart_frame);
+
+    return (uint16_t)(p - dst);
+    //HAL_UART_Transmit_DMA(&huart1, uart_frame, total_len);
+
 }

@@ -28,6 +28,8 @@
 #define DUST_MIN_UNDER_SAMPLES  2u     // campioni consecutivi sotto soglia bassa
 #define DUST_EVENT_SAMPLES      5u     // quanti sample salvare per evento
 
+#define RAM_BUFFER_SIZE  32768  // 8 KB di buffer totale
+#define WRITE_THRESHOLD  16384  // Scriviamo su SD quando arriviamo a metà (4KB)
 
 extern TIM_HandleTypeDef htim3;
 extern LPTIM_HandleTypeDef hlptim1;
@@ -46,7 +48,8 @@ static inline void CHANNEL_SET_Init(void);
 void LED_BLINKING(const uint32_t LED_COLOR, uint16_t *pwm_buf);
 void GET_ADC_VALUES();
 void GET_ADC_VALUES_continous();
-extern void SD_Write_Test_File(void);
+extern void SD_Write_Buffer(uint8_t *pData, uint32_t length);
+void DUST_Save_To_Ram(uint8_t *new_data, uint16_t data_len);
 
 typedef struct
 {
@@ -64,6 +67,7 @@ void DUST_SetCurrentChannel(uint8_t ch);
 void DUST_OnAdcSample(uint8_t channel, uint16_t raw_sample, uint32_t timestamp_ms);
 uint16_t DUST_BuildFrame(uint8_t *dst, uint16_t max_len);
 void DUST_SendFrame_UART(void);
+uint16_t DUST_BuildFrame_RAM(uint8_t *dst, uint16_t max_len);
 
 
 #endif // DUST_H
